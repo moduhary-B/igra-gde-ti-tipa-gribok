@@ -548,6 +548,8 @@ let state = {
   shake: 0,
 };
 
+let lastFrameTime = performance.now();
+
 // ---------- ВВОД ----------
 const keys = {};
 window.addEventListener('keydown', e => {
@@ -750,7 +752,7 @@ function drawParticles() {
 }
 
 // ---------- ОБНОВЛЕНИЕ ----------
-function update() {
+function update(dt = 1) {
   if (!state.running) return;
 
   // Игрок: ввод
@@ -760,7 +762,7 @@ function update() {
 
   if (left) { player.vx = -player.speed; player.facing = -1; }
   else if (right) { player.vx = player.speed; player.facing = 1; }
-  else player.vx *= 0.7;
+  else player.vx *= Math.pow(0.7, dt);
 
   if (jump && player.onGround) {
     player.vy = -player.jumpPower;
@@ -769,9 +771,9 @@ function update() {
   }
 
   // Физика игрока
-  player.vy += 0.7; // гравитация
-  player.x += player.vx;
-  player.y += player.vy;
+  player.vy += 0.7 * dt; // гравитация
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
   if (player.x < 0) player.x = 0;
   if (player.x + player.w > W) player.x = W - player.w;
   if (player.y + player.h >= GROUND_Y) {
@@ -779,11 +781,11 @@ function update() {
     player.vy = 0;
     player.onGround = true;
   }
-  player.bobTimer++;
-  if (player.invuln > 0) player.invuln--;
+  player.bobTimer += dt;
+  if (player.invuln > 0) player.invuln = Math.max(0, player.invuln - dt);
 
   // Спавн Марио
-  state.spawnTimer--;
+  state.spawnTimer -= dt;
   const targetCount = Math.min(3, 1 + Math.floor(state.kills / 4));
   if (state.spawnTimer <= 0 && marios.filter(m => m.alive).length < targetCount) {
     spawnMario();
@@ -793,13 +795,13 @@ function update() {
   // Обновление Марио
   for (const m of marios) {
     if (!m.alive) {
-      m.deathTimer--;
+      m.deathTimer -= dt;
       continue;
     }
     // Гравитация для марио тоже
-    m.vy += 0.6;
-    m.x += m.vx;
-    m.y += m.vy;
+    m.vy += 0.6 * dt;
+    m.x += m.vx * dt;
+    m.y += m.vy * dt;
     if (m.y + m.h >= GROUND_Y) {
       m.y = GROUND_Y - m.h;
       m.vy = 0;
@@ -812,14 +814,14 @@ function update() {
     if (m.x + m.w > W + 80) m.vx = -Math.abs(m.vx);
 
     // Случайные прыжки
-    m.jumpCooldown--;
+    m.jumpCooldown -= dt;
     if (m.jumpCooldown <= 0 && m.onGround) {
       m.vy = -10 - Math.random() * 3;
       m.jumpCooldown = 80 + Math.random() * 150;
     }
 
     // Реплики Марио
-    m.shoutTimer--;
+    m.shoutTimer -= dt;
     if (m.shoutTimer <= 0) {
       m.shout = MARIO_TAUNTS[Math.floor(Math.random() * MARIO_TAUNTS.length)];
       m.shoutTimer = 200 + Math.random() * 300;
@@ -831,7 +833,7 @@ function update() {
       // Падает ли игрок СВЕРХУ?
       const playerBottom = player.y + player.h;
       const marioTop = m.y;
-      if (player.vy > 0 && playerBottom - player.vy <= marioTop + 8) {
+      if (player.vy > 0 && playerBottom - player.vy * dt <= marioTop + 8) {
         // УБИЙСТВО МАРИО
         m.alive = false;
         m.deathTimer = 60;
@@ -869,20 +871,20 @@ function update() {
 
   // Облака
   for (const c of clouds) {
-    c.x -= c.speed;
+    c.x -= c.speed * dt;
     if (c.x + c.size < 0) c.x = W + c.size;
   }
 
   // Частицы
   for (const p of particles) {
-    p.vy += 0.3;
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life--;
+    p.vy += 0.3 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
   }
   particles = particles.filter(p => p.life > 0);
 
-  if (state.shake > 0) state.shake--;
+  if (state.shake > 0) state.shake -= dt;
 
   // HUD
   document.getElementById('score').textContent = state.score;
@@ -960,8 +962,13 @@ function showSubtitle(text) {
 }
 
 // ---------- ИГРОВОЙ ЦИКЛ ----------
-function loop() {
-  update();
+function loop(now = performance.now()) {
+  const baseFrameMs = 1000 / 144;
+  const rawDt = (now - lastFrameTime) / baseFrameMs;
+  const dt = Math.min(3, Math.max(0.1, rawDt || 1));
+  lastFrameTime = now;
+
+  update(dt);
   render();
   requestAnimationFrame(loop);
 }
