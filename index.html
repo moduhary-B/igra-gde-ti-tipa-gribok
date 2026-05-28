@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ГРИБОК ПРОТИВ МАРИО — Высокомерный Птеродактиль Edition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+    user-select: none;
+  }
+  #game-wrap {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #5c94fc;
+  }
+  canvas {
+    display: block;
+    background: linear-gradient(to bottom, #5c94fc 0%, #5c94fc 70%, #d4a373 70%, #d4a373 100%);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+    max-width: 100%;
+    max-height: 100%;
+  }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 18px;
+    text-shadow: 2px 2px 0 #000;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #hud div { margin-bottom: 4px; }
+  #subtitle {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.75);
+    border: 3px solid #fff;
+    padding: 12px 24px;
+    font-size: 20px;
+    max-width: 80%;
+    text-align: center;
+    text-shadow: 1px 1px 0 #000;
+    display: none;
+    z-index: 10;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+  #subtitle.show { display: block; animation: pop 0.3s ease-out; }
+  @keyframes pop {
+    0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+    100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  }
+  #start-screen, #end-screen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 20px;
+    text-align: center;
+  }
+  #end-screen { display: none; }
+  h1 {
+    font-size: 48px;
+    color: #ffcc00;
+    text-shadow: 4px 4px 0 #ff0000, 8px 8px 0 #000;
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+  }
+  h2 {
+    font-size: 32px;
+    color: #ff5050;
+    text-shadow: 3px 3px 0 #000;
+    margin-bottom: 16px;
+  }
+  .desc {
+    font-size: 18px;
+    max-width: 700px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+    color: #ddd;
+  }
+  .controls {
+    font-size: 16px;
+    background: rgba(255,255,255,0.1);
+    padding: 16px 24px;
+    border: 2px dashed #fff;
+    margin-bottom: 30px;
+    line-height: 1.8;
+  }
+  button {
+    font-family: inherit;
+    font-size: 22px;
+    background: #ff0000;
+    color: #fff;
+    border: 4px solid #fff;
+    padding: 12px 32px;
+    cursor: pointer;
+    text-shadow: 2px 2px 0 #000;
+    transition: transform 0.1s;
+  }
+  button:hover { transform: scale(1.05); background: #ff3030; }
+  button:active { transform: scale(0.98); }
+  .victory-quote {
+    font-size: 22px;
+    color: #ffcc00;
+    background: rgba(0,0,0,0.7);
+    padding: 20px 30px;
+    border: 3px solid #ff0000;
+    margin: 20px 0 30px;
+    max-width: 800px;
+    line-height: 1.5;
+    font-style: italic;
+  }
+  .author { color: #888; font-size: 14px; margin-top: 8px; }
+  .small { font-size: 13px; color: #aaa; margin-top: 20px; }
+  #mobile-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    display: none;
+    justify-content: space-between;
+    padding: 20px;
+    z-index: 15;
+    pointer-events: none;
+  }
+  #mobile-controls .btn-group { display: flex; gap: 10px; pointer-events: auto; }
+  .mbtn {
+    width: 70px;
+    height: 70px;
+    background: rgba(255,255,255,0.3);
+    border: 3px solid #fff;
+    border-radius: 50%;
+    font-size: 28px;
+    color: #fff;
+    text-shadow: 2px 2px 0 #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  @media (max-width: 768px) {
+    #mobile-controls { display: flex; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    .desc { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+
+  <div id="hud">
+    <div>СЧЁТ: <span id="score">0</span></div>
+    <div>ЖИЗНИ: <span id="lives">3</span></div>
+    <div>МАРИО ПОБИТО: <span id="kills">0</span> / 10</div>
+  </div>
+
+  <div id="subtitle"></div>
+
+  <div id="mobile-controls">
+    <div class="btn-group">
+      <div class="mbtn" id="btn-left">◀</div>
+      <div class="mbtn" id="btn-right">▶</div>
+    </div>
+    <div class="btn-group">
+      <div class="mbtn" id="btn-jump">▲</div>
+    </div>
+  </div>
+
+  <div id="start-screen">
+    <h1>ГРИБОК vs МАРИО</h1>
+    <h2>Высокомерный Птеродактиль Edition</h2>
+    <div class="desc">
+      Италия. Грибное царство. Годами усатый сантехник топтал твою родню в кастрюли с пастой.
+      Сегодня грибы восстали. Ты — обычный гриб, и у тебя одна цель: <b>прыгать на Марио сверху</b>,
+      пока этот высокомерный птеродактиль не схлопочет своё.
+    </div>
+    <div class="controls">
+      <b>УПРАВЛЕНИЕ:</b><br>
+      ← → или A D — двигаться<br>
+      ПРОБЕЛ / ↑ / W — прыгать<br>
+      Прыгай на Марио СВЕРХУ. Если коснёшься сбоку — теряешь жизнь.<br>
+      Цель: убить 10 Марио. Со смыслом нахуй, это славянская словесность.
+    </div>
+    <button onclick="startGame()">НАЧАТЬ БАТЛ</button>
+    <div class="small">Игра целиком на HTML/CSS/JS. Можно хостить на GitHub Pages.</div>
+  </div>
+
+  <div id="end-screen">
+    <h1 id="end-title">ПОБЕДА</h1>
+    <div class="victory-quote" id="end-quote"></div>
+    <div id="end-stats" class="desc"></div>
+    <button onclick="location.reload()">ЕЩЁ РАЗ</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// ГРИБОК vs МАРИО — пиксельная аркада на canvas
+// ============================================================
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const W = canvas.width;
+const H = canvas.height;
+const GROUND_Y = H - 80;
+
+// ---------- ФРАЗЫ-ПРИКОЛЫ (короткие мемы из открытых источников) ----------
+const TAUNTS_ON_KILL = [
+  "Высокомерный птеродактиль повержен!",
+  "Ты выполнила задание на пять с плюсом!",
+  "Сокращённо РЬОУ!",
+  "Со смыслом нахуй, это славянская словесность.",
+  "Интегральная гипербола ректальной кибернетики.",
+  "Помнишь ты съел деда? Сегодня дед съел Моргенштерна!",
+  "А у меня тоже есть птички...",
+  "Клоун задумался о своём наследии.",
+  "Твоя мать пропускает всех как дверной косяк.",
+  "Лучше сдохну ноунеймом, чем стану тобой!",
+];
+
+const MARIO_TAUNTS = [
+  "Wahoo!",
+  "It's-a me, Mario!",
+  "Mamma mia!",
+  "Сейчас тебя в кастрюлю!",
+  "Я принцессу спасал, пока ты спорами размножался!",
+  "Я главный герой, грибок!",
+];
+
+const TAUNTS_ON_HURT = [
+  "Ой, больно...",
+  "Грибочка задели!",
+  "Это не споры, это слёзы.",
+  "Мицелий рыдает.",
+];
+
+// ---------- ИГРОК (ГРИБОК) ----------
+const player = {
+  x: 100,
+  y: GROUND_Y - 60,
+  w: 50,
+  h: 60,
+  vx: 0,
+  vy: 0,
+  speed: 4.5,
+  jumpPower: 14,
+  onGround: false,
+  facing: 1,
+  invuln: 0,
+  bobTimer: 0,
+};
+
+// ---------- ВРАГИ (МАРИО) ----------
+let marios = [];
+const MARIO_COLORS = ['#e52521', '#0080ff', '#00aa00', '#aa00aa', '#ff8800'];
+
+function spawnMario() {
+  const fromLeft = Math.random() < 0.5;
+  const color = MARIO_COLORS[Math.floor(Math.random() * MARIO_COLORS.length)];
+  marios.push({
+    x: fromLeft ? -60 : W + 60,
+    y: GROUND_Y - 70,
+    w: 50,
+    h: 70,
+    vx: (fromLeft ? 1 : -1) * (1.2 + Math.random() * 1.5),
+    vy: 0,
+    onGround: true,
+    color: color,
+    alive: true,
+    deathTimer: 0,
+    shoutTimer: 60 + Math.random() * 120,
+    shout: "",
+    jumpCooldown: 60 + Math.random() * 120,
+  });
+}
+
+// ---------- ОБЛАКА (декорация) ----------
+const clouds = [];
+for (let i = 0; i < 6; i++) {
+  clouds.push({
+    x: Math.random() * W,
+    y: 30 + Math.random() * 150,
+    speed: 0.2 + Math.random() * 0.4,
+    size: 30 + Math.random() * 40,
+  });
+}
+
+// ---------- ЧАСТИЦЫ ----------
+let particles = [];
+function spawnParticles(x, y, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: -Math.random() * 8 - 2,
+      life: 30 + Math.random() * 20,
+      color,
+      size: 3 + Math.random() * 4,
+    });
+  }
+}
+
+// ---------- СОСТОЯНИЕ ИГРЫ ----------
+let state = {
+  score: 0,
+  lives: 3,
+  kills: 0,
+  goal: 10,
+  spawnTimer: 0,
+  running: false,
+  ended: false,
+  shake: 0,
+};
+
+// ---------- ВВОД ----------
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Mobile controls
+function setupMobile(id, code) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const press = e => { e.preventDefault(); keys[code] = true; };
+  const release = e => { e.preventDefault(); keys[code] = false; };
+  el.addEventListener('touchstart', press);
+  el.addEventListener('touchend', release);
+  el.addEventListener('mousedown', press);
+  el.addEventListener('mouseup', release);
+  el.addEventListener('mouseleave', release);
+}
+setupMobile('btn-left', 'ArrowLeft');
+setupMobile('btn-right', 'ArrowRight');
+setupMobile('btn-jump', 'Space');
+
+// ---------- РИСОВАНИЕ ГРИБКА ----------
+function drawMushroom(x, y, w, h, facing, bob) {
+  const cx = x + w / 2;
+  const bobOff = Math.sin(bob * 0.15) * 2;
+
+  // Ножка
+  ctx.fillStyle = '#f4e4c1';
+  ctx.fillRect(x + w * 0.25, y + h * 0.5, w * 0.5, h * 0.5 + bobOff);
+  // Тень ножки
+  ctx.fillStyle = '#d4c4a1';
+  ctx.fillRect(x + w * 0.25, y + h * 0.5, w * 0.15, h * 0.5 + bobOff);
+
+  // Шляпка
+  ctx.fillStyle = '#d72020';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + h * 0.4 + bobOff, w * 0.55, h * 0.4, 0, Math.PI, 0);
+  ctx.fill();
+  // Шляпка тень
+  ctx.fillStyle = '#a01010';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + h * 0.4 + bobOff, w * 0.55, h * 0.4, 0, Math.PI, Math.PI * 1.3);
+  ctx.fill();
+
+  // Белые пятна на шляпке
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(cx - 12, y + h * 0.3 + bobOff, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 10, y + h * 0.25 + bobOff, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 2, y + h * 0.45 + bobOff, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Глаза
+  const eyeY = y + h * 0.65 + bobOff;
+  const eyeOff = facing > 0 ? 1 : -1;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx - 10 + eyeOff, eyeY, 5, 7);
+  ctx.fillRect(cx + 5 + eyeOff, eyeY, 5, 7);
+  // Блик
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - 9 + eyeOff, eyeY + 1, 2, 2);
+  ctx.fillRect(cx + 6 + eyeOff, eyeY + 1, 2, 2);
+
+  // Злой рот (грибок-агрессор)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx - 6, y + h * 0.82 + bobOff, 12, 2);
+  // Клыки
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - 5, y + h * 0.82 + bobOff, 2, 4);
+  ctx.fillRect(cx + 3, y + h * 0.82 + bobOff, 2, 4);
+}
+
+// ---------- РИСОВАНИЕ МАРИО ----------
+function drawMario(m) {
+  const x = m.x, y = m.y, w = m.w, h = m.h;
+  if (!m.alive) {
+    // Squished mario (как раздавленный)
+    const flatH = h * 0.25;
+    const flatY = y + h - flatH;
+    ctx.fillStyle = m.color;
+    ctx.fillRect(x, flatY, w, flatH);
+    // Звёздочки
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('×_×', x + 5, flatY - 5);
+    return;
+  }
+  const dir = m.vx >= 0 ? 1 : -1;
+  // Кепка (красная)
+  ctx.fillStyle = m.color;
+  ctx.fillRect(x + 5, y, w - 10, 14);
+  ctx.fillRect(x + 10, y - 6, w - 20, 8);
+  // Козырёк
+  ctx.fillRect(x + (dir > 0 ? w - 15 : 5), y + 10, 12, 6);
+  // Эмблема M
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x + w / 2 - 5, y + 2, 10, 8);
+  ctx.fillStyle = m.color;
+  ctx.font = 'bold 9px monospace';
+  ctx.fillText('M', x + w / 2 - 3, y + 9);
+  // Лицо
+  ctx.fillStyle = '#ffd4a0';
+  ctx.fillRect(x + 8, y + 16, w - 16, 18);
+  // Усы
+  ctx.fillStyle = '#3a1a00';
+  ctx.fillRect(x + 10, y + 26, w - 20, 5);
+  // Нос
+  ctx.fillStyle = '#e8b080';
+  ctx.fillRect(x + w / 2 - 3, y + 22, 6, 5);
+  // Глаза
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + 14, y + 19, 3, 5);
+  ctx.fillRect(x + w - 17, y + 19, 3, 5);
+  // Рубашка
+  ctx.fillStyle = m.color;
+  ctx.fillRect(x + 5, y + 34, w - 10, 12);
+  // Комбинезон (синий)
+  ctx.fillStyle = '#1040c0';
+  ctx.fillRect(x + 5, y + 42, w - 10, h - 50);
+  // Пуговицы
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillRect(x + 12, y + 46, 4, 4);
+  ctx.fillRect(x + w - 16, y + 46, 4, 4);
+  // Ботинки
+  ctx.fillStyle = '#3a1a00';
+  ctx.fillRect(x + 2, y + h - 8, 18, 8);
+  ctx.fillRect(x + w - 20, y + h - 8, 18, 8);
+}
+
+// ---------- РИСОВАНИЕ ФОНА ----------
+function drawBackground() {
+  // Небо градиент уже в css. Рисуем землю.
+  ctx.fillStyle = '#c08040';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  // Трава
+  ctx.fillStyle = '#00a020';
+  ctx.fillRect(0, GROUND_Y, W, 12);
+  ctx.fillStyle = '#008010';
+  for (let i = 0; i < W; i += 8) {
+    ctx.fillRect(i, GROUND_Y + 8, 4, 4);
+  }
+  // Точки на земле
+  ctx.fillStyle = '#a06030';
+  for (let i = 0; i < 30; i++) {
+    const px = (i * 73) % W;
+    const py = GROUND_Y + 20 + ((i * 37) % 50);
+    ctx.fillRect(px, py, 3, 3);
+  }
+  // Облака
+  for (const c of clouds) {
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.size * 0.6, 0, Math.PI * 2);
+    ctx.arc(c.x + c.size * 0.5, c.y - c.size * 0.2, c.size * 0.5, 0, Math.PI * 2);
+    ctx.arc(c.x + c.size, c.y, c.size * 0.55, 0, Math.PI * 2);
+    ctx.arc(c.x + c.size * 0.5, c.y + c.size * 0.2, c.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Трубы (декорации в стиле SMB)
+  drawPipe(W * 0.15, GROUND_Y - 60, 50, 60);
+  drawPipe(W * 0.78, GROUND_Y - 90, 50, 90);
+  // Кусты
+  drawBush(W * 0.4, GROUND_Y - 18, 80);
+  drawBush(W * 0.6, GROUND_Y - 22, 100);
+}
+
+function drawPipe(x, y, w, h) {
+  ctx.fillStyle = '#00a020';
+  ctx.fillRect(x, y + 15, w, h - 15);
+  ctx.fillStyle = '#008010';
+  ctx.fillRect(x, y + 15, 8, h - 15);
+  // Верхняя часть
+  ctx.fillStyle = '#00a020';
+  ctx.fillRect(x - 6, y, w + 12, 18);
+  ctx.fillStyle = '#008010';
+  ctx.fillRect(x - 6, y, 10, 18);
+  ctx.fillStyle = '#00d040';
+  ctx.fillRect(x - 4, y + 2, w + 8, 4);
+}
+
+function drawBush(x, y, w) {
+  ctx.fillStyle = '#00a020';
+  ctx.beginPath();
+  ctx.arc(x, y, w * 0.2, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.3, y - 5, w * 0.18, 0, Math.PI * 2);
+  ctx.arc(x + w * 0.6, y, w * 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(x - w * 0.2, y, w, 20);
+}
+
+// ---------- РИСОВАНИЕ ЧАСТИЦ ----------
+function drawParticles() {
+  for (const p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.min(1, p.life / 30);
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- ОБНОВЛЕНИЕ ----------
+function update() {
+  if (!state.running) return;
+
+  // Игрок: ввод
+  const left = keys['ArrowLeft'] || keys['KeyA'];
+  const right = keys['ArrowRight'] || keys['KeyD'];
+  const jump = keys['Space'] || keys['ArrowUp'] || keys['KeyW'];
+
+  if (left) { player.vx = -player.speed; player.facing = -1; }
+  else if (right) { player.vx = player.speed; player.facing = 1; }
+  else player.vx *= 0.7;
+
+  if (jump && player.onGround) {
+    player.vy = -player.jumpPower;
+    player.onGround = false;
+  }
+
+  // Физика игрока
+  player.vy += 0.7; // гравитация
+  player.x += player.vx;
+  player.y += player.vy;
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.w > W) player.x = W - player.w;
+  if (player.y + player.h >= GROUND_Y) {
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+  player.bobTimer++;
+  if (player.invuln > 0) player.invuln--;
+
+  // Спавн Марио
+  state.spawnTimer--;
+  const targetCount = Math.min(3, 1 + Math.floor(state.kills / 4));
+  if (state.spawnTimer <= 0 && marios.filter(m => m.alive).length < targetCount) {
+    spawnMario();
+    state.spawnTimer = 90 + Math.random() * 60;
+  }
+
+  // Обновление Марио
+  for (const m of marios) {
+    if (!m.alive) {
+      m.deathTimer--;
+      continue;
+    }
+    // Гравитация для марио тоже
+    m.vy += 0.6;
+    m.x += m.vx;
+    m.y += m.vy;
+    if (m.y + m.h >= GROUND_Y) {
+      m.y = GROUND_Y - m.h;
+      m.vy = 0;
+      m.onGround = true;
+    } else {
+      m.onGround = false;
+    }
+    // Разворот у края
+    if (m.x < -80) m.vx = Math.abs(m.vx);
+    if (m.x + m.w > W + 80) m.vx = -Math.abs(m.vx);
+
+    // Случайные прыжки
+    m.jumpCooldown--;
+    if (m.jumpCooldown <= 0 && m.onGround) {
+      m.vy = -10 - Math.random() * 3;
+      m.jumpCooldown = 80 + Math.random() * 150;
+    }
+
+    // Реплики Марио
+    m.shoutTimer--;
+    if (m.shoutTimer <= 0) {
+      m.shout = MARIO_TAUNTS[Math.floor(Math.random() * MARIO_TAUNTS.length)];
+      m.shoutTimer = 200 + Math.random() * 300;
+      setTimeout(() => { m.shout = ""; }, 1500);
+    }
+
+    // Коллизия с игроком
+    if (rectOverlap(player, m)) {
+      // Падает ли игрок СВЕРХУ?
+      const playerBottom = player.y + player.h;
+      const marioTop = m.y;
+      if (player.vy > 0 && playerBottom - player.vy <= marioTop + 8) {
+        // УБИЙСТВО МАРИО
+        m.alive = false;
+        m.deathTimer = 60;
+        m.vx = 0;
+        state.kills++;
+        state.score += 100;
+        player.vy = -10; // отскок
+        state.shake = 8;
+        spawnParticles(m.x + m.w / 2, m.y + m.h / 2, m.color, 18);
+        spawnParticles(m.x + m.w / 2, m.y + m.h / 2, '#ffcc00', 10);
+        showSubtitle(TAUNTS_ON_KILL[Math.floor(Math.random() * TAUNTS_ON_KILL.length)]);
+        if (state.kills >= state.goal) {
+          endGame(true);
+        }
+      } else if (player.invuln <= 0) {
+        // Игрок получает урон
+        state.lives--;
+        player.invuln = 90;
+        player.vy = -8;
+        player.vx = (player.x < m.x ? -1 : 1) * 6;
+        state.shake = 10;
+        spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ff0000', 14);
+        showSubtitle(TAUNTS_ON_HURT[Math.floor(Math.random() * TAUNTS_ON_HURT.length)]);
+        if (state.lives <= 0) {
+          endGame(false);
+        }
+      }
+    }
+  }
+
+  // Чистка мёртвых
+  marios = marios.filter(m => m.alive || m.deathTimer > 0);
+
+  // Облака
+  for (const c of clouds) {
+    c.x -= c.speed;
+    if (c.x + c.size < 0) c.x = W + c.size;
+  }
+
+  // Частицы
+  for (const p of particles) {
+    p.vy += 0.3;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  if (state.shake > 0) state.shake--;
+
+  // HUD
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('lives').textContent = state.lives;
+  document.getElementById('kills').textContent = state.kills;
+}
+
+function rectOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ---------- РЕНДЕР ----------
+function render() {
+  ctx.save();
+  if (state.shake > 0) {
+    ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
+  }
+  // Очистка (фон сам через градиент canvas)
+  ctx.fillStyle = '#5c94fc';
+  ctx.fillRect(0, 0, W, GROUND_Y);
+  drawBackground();
+
+  // Марио (мёртвые сначала)
+  for (const m of marios) if (!m.alive) drawMario(m);
+  for (const m of marios) if (m.alive) {
+    drawMario(m);
+    if (m.shout) {
+      drawSpeechBubble(m.x + m.w / 2, m.y - 10, m.shout);
+    }
+  }
+
+  // Частицы
+  drawParticles();
+
+  // Игрок (мигает при invuln)
+  if (player.invuln === 0 || Math.floor(player.invuln / 5) % 2 === 0) {
+    drawMushroom(player.x, player.y, player.w, player.h, player.facing, player.bobTimer);
+  }
+
+  ctx.restore();
+}
+
+function drawSpeechBubble(cx, cy, text) {
+  ctx.font = '14px monospace';
+  const w = ctx.measureText(text).width + 16;
+  const h = 22;
+  const x = cx - w / 2;
+  const y = cy - h;
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+  // Хвостик
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, y + h);
+  ctx.lineTo(cx, y + h + 8);
+  ctx.lineTo(cx + 5, y + h);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.fillText(text, x + 8, y + 15);
+}
+
+// ---------- СУБТИТРЫ ----------
+let subtitleTimer = null;
+function showSubtitle(text) {
+  const el = document.getElementById('subtitle');
+  el.textContent = text;
+  el.classList.add('show');
+  if (subtitleTimer) clearTimeout(subtitleTimer);
+  subtitleTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ---------- ИГРОВОЙ ЦИКЛ ----------
+function loop() {
+  update();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ---------- СТАРТ / КОНЕЦ ----------
+function startGame() {
+  document.getElementById('start-screen').style.display = 'none';
+  state.running = true;
+  state.spawnTimer = 30;
+  showSubtitle("РЬОУ! Прыгай на этого усатого!");
+}
+
+function endGame(victory) {
+  state.running = false;
+  state.ended = true;
+  const screen = document.getElementById('end-screen');
+  const title = document.getElementById('end-title');
+  const quote = document.getElementById('end-quote');
+  const stats = document.getElementById('end-stats');
+  if (victory) {
+    title.textContent = "ГРИБОК ПОБЕДИЛ!";
+    title.style.color = '#ffcc00';
+    // Финальная фраза, явно заказанная пользователем
+    quote.innerHTML = '"Когда умрёшь — порежу вены, чтоб ебать тебя в аду."<div class="author">— грибок, наклонившись над поверженным сантехником</div>';
+  } else {
+    title.textContent = "ГРИБОК ПАЛ В БИТВЕ";
+    title.style.color = '#ff3030';
+    quote.innerHTML = '"Лучше сдохну ебучим ноунеймом, чем прославлюсь и стану тобой!"<div class="author">— последние слова грибка</div>';
+  }
+  stats.innerHTML = `Счёт: <b>${state.score}</b> &nbsp;|&nbsp; Марио побито: <b>${state.kills}</b> / ${state.goal}`;
+  screen.style.display = 'flex';
+}
+
+// Запуск
+loop();
+</script>
+</body>
+</html>
