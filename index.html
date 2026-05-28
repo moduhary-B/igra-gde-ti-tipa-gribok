@@ -45,7 +45,7 @@
   #hud div { margin-bottom: 4px; }
   #subtitle {
     position: absolute;
-    bottom: 30px;
+    bottom: calc(30px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0,0,0,0.75);
@@ -140,7 +140,7 @@
     width: 100%;
     display: none;
     justify-content: space-between;
-    padding: 20px;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
     z-index: 15;
     pointer-events: none;
   }
@@ -164,6 +164,38 @@
     h1 { font-size: 32px; }
     h2 { font-size: 24px; }
     .desc { font-size: 14px; }
+    #hud {
+      top: calc(8px + env(safe-area-inset-top, 0px));
+      left: calc(8px + env(safe-area-inset-left, 0px));
+      font-size: 14px;
+    }
+    #subtitle {
+      bottom: calc(105px + env(safe-area-inset-bottom, 0px));
+      max-width: calc(100% - 24px);
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+    #mobile-controls {
+      padding: 12px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+    }
+    .mbtn {
+      width: 58px;
+      height: 58px;
+      font-size: 24px;
+    }
+  }
+  @media (max-height: 520px) {
+    #mobile-controls {
+      padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+    .mbtn {
+      width: 50px;
+      height: 50px;
+      font-size: 22px;
+    }
+    #subtitle {
+      bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    }
   }
 </style>
 </head>
@@ -229,6 +261,114 @@ const W = canvas.width;
 const H = canvas.height;
 const GROUND_Y = H - 80;
 
+// ---------- ЗВУКИ (WebAudio, без внешних файлов) ----------
+let audioCtx = null;
+let musicTimer = null;
+let musicStep = 0;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function tone(freq, duration, type = 'square', volume = 0.12, delay = 0) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(volume, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+
+function slideTone(from, to, duration, type = 'square', volume = 0.12) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(from, t);
+  osc.frequency.exponentialRampToValueAtTime(to, t + duration);
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + duration + 0.02);
+}
+
+function noise(duration, volume = 0.18) {
+  if (!audioCtx) return;
+  const bufferSize = audioCtx.sampleRate * duration;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const source = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  source.buffer = buffer;
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+  source.connect(gain).connect(audioCtx.destination);
+  source.start();
+}
+
+function sfxJump() {
+  slideTone(330, 740, 0.16, 'square', 0.09);
+}
+
+function sfxStomp() {
+  tone(180, 0.05, 'square', 0.18);
+  tone(90, 0.10, 'square', 0.16, 0.04);
+  noise(0.09, 0.11);
+}
+
+function sfxHurt() {
+  slideTone(300, 80, 0.28, 'sawtooth', 0.16);
+  noise(0.12, 0.12);
+}
+
+function sfxSpawn() {
+  tone(220, 0.05, 'triangle', 0.06);
+  tone(330, 0.05, 'triangle', 0.06, 0.06);
+}
+
+function sfxVictory() {
+  stopMusic();
+  [523, 659, 784, 1046, 784, 1046].forEach((note, i) => tone(note, 0.16, 'square', 0.14, i * 0.14));
+  tone(1318, 0.35, 'triangle', 0.16, 0.86);
+}
+
+function sfxGameOver() {
+  stopMusic();
+  [392, 330, 262, 196, 130].forEach((note, i) => tone(note, 0.22, 'sawtooth', 0.13, i * 0.18));
+}
+
+function startMusic() {
+  if (musicTimer || !audioCtx) return;
+  const bass = [130, 130, 196, 196, 174, 174, 196, 98];
+  const lead = [523, 0, 659, 0, 784, 659, 523, 392, 440, 0, 523, 0, 659, 523, 440, 392];
+  musicTimer = setInterval(() => {
+    if (!state.running || !audioCtx) return;
+    const b = bass[musicStep % bass.length];
+    const l = lead[musicStep % lead.length];
+    tone(b, 0.08, 'square', 0.025);
+    if (l) tone(l, 0.07, 'triangle', 0.035, 0.02);
+    if (musicStep % 4 === 0) noise(0.025, 0.018);
+    musicStep++;
+  }, 155);
+}
+
+function stopMusic() {
+  if (musicTimer) clearInterval(musicTimer);
+  musicTimer = null;
+}
+
 // ---------- ФРАЗЫ-ПРИКОЛЫ (короткие мемы из открытых источников) ----------
 const TAUNTS_ON_KILL = [
   "Высокомерный птеродактиль повержен!",
@@ -282,6 +422,7 @@ const MARIO_COLORS = ['#e52521', '#0080ff', '#00aa00', '#aa00aa', '#ff8800'];
 function spawnMario() {
   const fromLeft = Math.random() < 0.5;
   const color = MARIO_COLORS[Math.floor(Math.random() * MARIO_COLORS.length)];
+  sfxSpawn();
   marios.push({
     x: fromLeft ? -60 : W + 60,
     y: GROUND_Y - 70,
@@ -386,9 +527,9 @@ function drawMushroom(x, y, w, h, facing, bob) {
 
   // Белые пятна на шляпке
   ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(cx - 12, y + h * 0.3 + bobOff, 6, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 10, y + h * 0.25 + bobOff, 5, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + 2, y + h * 0.45 + bobOff, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - 10, y + h * 0.34 + bobOff, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 9, y + h * 0.32 + bobOff, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 1, y + h * 0.45 + bobOff, 4, 0, Math.PI * 2); ctx.fill();
 
   // Глаза
   const eyeY = y + h * 0.65 + bobOff;
@@ -554,6 +695,7 @@ function update() {
   if (jump && player.onGround) {
     player.vy = -player.jumpPower;
     player.onGround = false;
+    sfxJump();
   }
 
   // Физика игрока
@@ -628,6 +770,7 @@ function update() {
         state.score += 100;
         player.vy = -10; // отскок
         state.shake = 8;
+        sfxStomp();
         spawnParticles(m.x + m.w / 2, m.y + m.h / 2, m.color, 18);
         spawnParticles(m.x + m.w / 2, m.y + m.h / 2, '#ffcc00', 10);
         showSubtitle(TAUNTS_ON_KILL[Math.floor(Math.random() * TAUNTS_ON_KILL.length)]);
@@ -641,6 +784,7 @@ function update() {
         player.vy = -8;
         player.vx = (player.x < m.x ? -1 : 1) * 6;
         state.shake = 10;
+        sfxHurt();
         spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ff0000', 14);
         showSubtitle(TAUNTS_ON_HURT[Math.floor(Math.random() * TAUNTS_ON_HURT.length)]);
         if (state.lives <= 0) {
@@ -754,9 +898,11 @@ function loop() {
 
 // ---------- СТАРТ / КОНЕЦ ----------
 function startGame() {
+  initAudio();
   document.getElementById('start-screen').style.display = 'none';
   state.running = true;
   state.spawnTimer = 30;
+  startMusic();
   showSubtitle("РЬОУ! Прыгай на этого усатого!");
 }
 
@@ -768,11 +914,13 @@ function endGame(victory) {
   const quote = document.getElementById('end-quote');
   const stats = document.getElementById('end-stats');
   if (victory) {
+    sfxVictory();
     title.textContent = "ГРИБОК ПОБЕДИЛ!";
     title.style.color = '#ffcc00';
     // Финальная фраза, явно заказанная пользователем
     quote.innerHTML = '"Когда умрёшь — порежу вены, чтоб ебать тебя в аду."<div class="author">— грибок, наклонившись над поверженным сантехником</div>';
   } else {
+    sfxGameOver();
     title.textContent = "ГРИБОК ПАЛ В БИТВЕ";
     title.style.color = '#ff3030';
     quote.innerHTML = '"Лучше сдохну ебучим ноунеймом, чем прославлюсь и стану тобой!"<div class="author">— последние слова грибка</div>';
